@@ -7,7 +7,8 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpException;
 import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.httpclient.methods.GetMethod;
+import org.apache.commons.httpclient.NameValuePair;
+import org.apache.commons.httpclient.methods.PostMethod;
 
 /**
  * 九诺短信平台SMS接口
@@ -27,13 +28,23 @@ public class Sms {
   public static final String PARAM_NAME_USERNAME = "userName";
   public static final String PARAM_NAME_PASSWORD = "pwd";
 
-  private Sms(Properties properties) {}
+  private NameValuePair username;
+  private NameValuePair password;
+
+  private Sms(Properties properties) {
+    this.username =
+        new NameValuePair(PARAM_NAME_USERNAME, properties.getProperty(PARAM_NAME_USERNAME));
+    this.password =
+        new NameValuePair(PARAM_NAME_PASSWORD, properties.getProperty(PARAM_NAME_PASSWORD));
+  }
 
   public int getBalance() throws SmsException {
     try {
-      GetMethod get = new GetMethod(API_BALANCE);
-      int code = CLIENT.executeMethod(get);
-      String result = get.getResponseBodyAsString();
+      PostMethod post = new PostMethod(API_BALANCE);
+      NameValuePair[] parameters = new NameValuePair[] {username, password};
+      post.setRequestBody(parameters);
+      int code = CLIENT.executeMethod(post);
+      String result = post.getResponseBodyAsString();
       if (code == HttpStatus.SC_OK) {
         try {
           return Integer.parseInt(result);
