@@ -37,6 +37,8 @@ public class Sms {
   private static final String API_SEND = "http://admin.9nuo.com/Interface_http/SendSms.aspx";// 指定用户发送短信
   private static final String API_SENT_HISTORY =
       "http://admin.9nuo.com/Interface_http/GetReportDetail.aspx";// 查询指定用户某日期范围内短信发送的明细清单
+  private static final String API_DAILY_SENT =
+      "http://admin.9nuo.com/Interface_http/GetReportTotalByDay.aspx";// 查询指定用户某日期范围内每天发送短信的总数
 
   private static final String CONFIG_KEY_USERNAME = "9nuo.username";
   private static final String CONFIG_KEY_PASSWORD = "9nuo.password";
@@ -144,6 +146,27 @@ public class Sms {
     }
   }
 
+  public List<DailyReport> getDailyReport(Date start, Date end) {
+    String htmlResult = null;
+    try {
+      NameValuePair phone = new NameValuePair("startDate", YMD_DATE_FORMAT.format(start));
+      NameValuePair note = new NameValuePair("endDate", YMD_DATE_FORMAT.format(end));
+      NameValuePair[] parameters = new NameValuePair[] {username, password, phone, note};
+      PostMethod post = new PostMethod(API_DAILY_SENT);
+      post.setRequestBody(parameters);
+      int code = CLIENT.executeMethod(post);
+      if (code == HttpStatus.SC_OK) {
+        htmlResult = post.getResponseBodyAsString();
+        return parseDailyReportResult(new ByteArrayInputStream(htmlResult.getBytes()));
+      } else {
+        throw new SmsException(code + ":" + htmlResult);
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+      throw new SmsException(htmlResult == null ? e.getMessage() : htmlResult);
+    }
+  }
+
   private List<SendResult> parseSendResult(InputStream input) {
     try {
       List<SendResult> result = new ArrayList<SendResult>();
@@ -215,6 +238,39 @@ public class Sms {
       history.setContent(content);
       history.setSuccess(success);
       result.add(history);
+    }
+    return result;
+  }
+
+  private List<DailyReport> parseDailyReportResult(InputStream input) throws Exception {
+    List<DailyReport> result = new ArrayList<DailyReport>();
+    NodeList nodes =
+        DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(input).getDocumentElement()
+            .getElementsByTagName("Table");
+    for (int i = 0; i < nodes.getLength(); i++) {
+      Date date = null;
+      boolean success = false;
+      int count = 0;
+      Element dtElement = (Element) nodes.item(i);
+      NodeList childNodes = dtElement.getChildNodes();
+      for (int j = 0; j < childNodes.getLength(); j++) {
+        if (childNodes.item(j).getNodeType() == Node.ELEMENT_NODE) {
+          String nodeName = childNodes.item(j).getNodeName();
+          Node firstChild = childNodes.item(j).getFirstChild();
+          if ("Senddate".equals(nodeName)) {
+            date = YMD_DATE_FORMAT.parse(firstChild.getNodeValue());
+          } else if ("Result".equals(nodeName)) {
+            success = "成功".equals(firstChild.getNodeValue());
+          } else if ("TotalCount".equals(nodeName)) {
+            count = Integer.parseInt(firstChild.getNodeValue());
+          }
+        }
+      }
+      DailyReport dailyReport = new DailyReport();
+      dailyReport.setDate(date);
+      dailyReport.setSuccess(success);
+      dailyReport.setCount(count);
+      result.add(dailyReport);
     }
     return result;
   }
