@@ -123,7 +123,7 @@ public class Sms {
     try {
       String phones = "";
       for (String phone : to) {
-        phones = "," + phone;
+        phones = phones + "," + phone;
       }
       result =
           execute(API_SEND, new NameValuePair(PARAM_NAME_PHONE, phones.substring(1)),
