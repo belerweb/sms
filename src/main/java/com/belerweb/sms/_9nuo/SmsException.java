@@ -8,4 +8,8 @@ public class SmsException extends RuntimeException {
     super(message);
   }
 
+  public SmsException(String message, Throwable e) {
+    super(message, e);
+  }
+
 }

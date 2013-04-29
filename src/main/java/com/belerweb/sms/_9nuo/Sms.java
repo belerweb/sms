@@ -76,7 +76,7 @@ public class Sms {
       result = execute(API_BALANCE);
       return Integer.parseInt(result);
     } catch (Exception e) {
-      throw new SmsException(result == null ? e.getMessage() : result);
+      throw new SmsException(result == null ? e.getMessage() : result, e);
     }
   }
 
@@ -99,7 +99,38 @@ public class Sms {
               PARAM_NAME_NOTE, content));
       return parseSendResult(result).get(0);
     } catch (Exception e) {
-      throw new SmsException(result == null ? e.getMessage() : result);
+      throw new SmsException(result == null ? e.getMessage() : result, e);
+    }
+  }
+
+  /**
+   * 批量发送短信
+   * 
+   * @param to 收信人（多个）
+   * @param content 短信内容
+   * @return 发送结果
+   */
+  public List<SendResult> send(List<String> to, String content) {
+    if (to == null || to.isEmpty()) {
+      throw new SmsException("至少提供一个号码");
+    }
+
+    if (to.size() > 1000) {
+      throw new SmsException("一次最多1000个号码");
+    }
+
+    String result = null;
+    try {
+      String phones = "";
+      for (String phone : to) {
+        phones = "," + phone;
+      }
+      result =
+          execute(API_SEND, new NameValuePair(PARAM_NAME_PHONE, phones.substring(1)),
+              new NameValuePair(PARAM_NAME_NOTE, content));
+      return parseSendResult(result);
+    } catch (Exception e) {
+      throw new SmsException(result == null ? e.getMessage() : result, e);
     }
   }
 
@@ -118,7 +149,7 @@ public class Sms {
               .format(start)), new NameValuePair(PARAM_NAME_END_DATE, YMD_DATE_FORMAT.format(end)));
       return parseHistoryResult(result);
     } catch (Exception e) {
-      throw new SmsException(result == null ? e.getMessage() : result);
+      throw new SmsException(result == null ? e.getMessage() : result, e);
     }
   }
 
@@ -137,7 +168,7 @@ public class Sms {
               .format(start)), new NameValuePair(PARAM_NAME_END_DATE, YMD_DATE_FORMAT.format(end)));
       return parseDailyReportResult(result);
     } catch (Exception e) {
-      throw new SmsException(result == null ? e.getMessage() : result);
+      throw new SmsException(result == null ? e.getMessage() : result, e);
     }
   }
 
@@ -147,7 +178,7 @@ public class Sms {
     parameters[0] = username;
     parameters[1] = password;
     for (int i = 2; i < paramSize; i++) {
-      parameters[1] = params[i - 2];
+      parameters[i] = params[i - 2];
     }
     PostMethod post = new PostMethod(api);
     post.setRequestBody(parameters);
