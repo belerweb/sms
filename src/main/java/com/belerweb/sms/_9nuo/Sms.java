@@ -2,15 +2,14 @@ package com.belerweb.sms._9nuo;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 
-import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.httpclient.HttpClient;
@@ -19,10 +18,10 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.NameValuePair;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.params.HttpMethodParams;
-import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 /**
  * 九诺短信平台SMS接口
@@ -50,6 +49,10 @@ public class Sms {
 
   public static final String PARAM_NAME_USERNAME = "userName";
   public static final String PARAM_NAME_PASSWORD = "pwd";
+  private static final String PARAM_NAME_START_DATE = "startDate";
+  private static final String PARAM_NAME_END_DATE = "endDate";
+  private static final String PARAM_NAME_PHONE = "phone";
+  private static final String PARAM_NAME_NOTE = "note";
 
   private NameValuePair username;
   private NameValuePair password;
@@ -68,27 +71,12 @@ public class Sms {
    * @throws SmsException
    */
   public int getBalance() throws SmsException {
+    String result = null;
     try {
-      PostMethod post = new PostMethod(API_BALANCE);
-      NameValuePair[] parameters = new NameValuePair[] {username, password};
-      post.setRequestBody(parameters);
-      int code = CLIENT.executeMethod(post);
-      String result = post.getResponseBodyAsString();
-      if (code == HttpStatus.SC_OK) {
-        try {
-          return Integer.parseInt(result);
-        } catch (NumberFormatException e) {
-          throw new SmsException(result);
-        }
-      } else {
-        throw new SmsException(code + ":" + result);
-      }
-    } catch (HttpException e) {
-      e.printStackTrace();
-      throw new SmsException(e.getMessage());
-    } catch (IOException e) {
-      e.printStackTrace();
-      throw new SmsException(e.getMessage());
+      result = execute(API_BALANCE);
+      return Integer.parseInt(result);
+    } catch (Exception e) {
+      throw new SmsException(result == null ? e.getMessage() : result);
     }
   }
 
@@ -99,180 +87,169 @@ public class Sms {
    * @param content 短信内容
    * @return 发送结果
    */
-  public SendResult send(String to, String content) {
+  public SendResult send(String to, String content) throws SmsException {
     if (!to.matches("\\d+")) {
       return new SendResult(to, false, "此接口只 支持一个号码");
     }
 
+    String result = null;
     try {
-      NameValuePair phone = new NameValuePair("phone", to);
-      NameValuePair note = new NameValuePair("note", content);
-      NameValuePair[] parameters = new NameValuePair[] {username, password, phone, note};
-      PostMethod post = new PostMethod(API_SEND);
-      post.setRequestBody(parameters);
-      int code = CLIENT.executeMethod(post);
-      if (code == HttpStatus.SC_OK) {
-        return parseSendResult(post.getResponseBodyAsStream()).get(0);
-      } else {
-        throw new SmsException("HTTP:" + code);
-      }
-    } catch (HttpException e) {
-      e.printStackTrace();
-      throw new SmsException(e.getMessage());
-    } catch (IOException e) {
-      e.printStackTrace();
-      throw new SmsException(e.getMessage());
-    }
-  }
-
-  public List<SmsHistory> getSentHistory(Date start, Date end) {
-    String htmlResult = null;
-    try {
-      NameValuePair phone = new NameValuePair("startDate", YMD_DATE_FORMAT.format(start));
-      NameValuePair note = new NameValuePair("endDate", YMD_DATE_FORMAT.format(end));
-      NameValuePair[] parameters = new NameValuePair[] {username, password, phone, note};
-      PostMethod post = new PostMethod(API_SENT_HISTORY);
-      post.setRequestBody(parameters);
-      int code = CLIENT.executeMethod(post);
-      if (code == HttpStatus.SC_OK) {
-        htmlResult = post.getResponseBodyAsString();
-        return parseHistoryResult(new ByteArrayInputStream(htmlResult.getBytes()));
-      } else {
-        throw new SmsException(code + ":" + htmlResult);
-      }
+      result =
+          execute(API_SEND, new NameValuePair(PARAM_NAME_PHONE, to), new NameValuePair(
+              PARAM_NAME_NOTE, content));
+      return parseSendResult(result).get(0);
     } catch (Exception e) {
-      e.printStackTrace();
-      throw new SmsException(htmlResult == null ? e.getMessage() : htmlResult);
+      throw new SmsException(result == null ? e.getMessage() : result);
     }
   }
 
-  public List<DailyReport> getDailyReport(Date start, Date end) {
-    String htmlResult = null;
+  /**
+   * 查询短信历史记录
+   * 
+   * @param start 开始日期
+   * @param end 结束日期
+   * @return 指定日期内的短信记录
+   */
+  public List<SmsHistory> getSentHistory(Date start, Date end) throws SmsException {
+    String result = null;
     try {
-      NameValuePair phone = new NameValuePair("startDate", YMD_DATE_FORMAT.format(start));
-      NameValuePair note = new NameValuePair("endDate", YMD_DATE_FORMAT.format(end));
-      NameValuePair[] parameters = new NameValuePair[] {username, password, phone, note};
-      PostMethod post = new PostMethod(API_DAILY_SENT);
-      post.setRequestBody(parameters);
-      int code = CLIENT.executeMethod(post);
-      if (code == HttpStatus.SC_OK) {
-        htmlResult = post.getResponseBodyAsString();
-        return parseDailyReportResult(new ByteArrayInputStream(htmlResult.getBytes()));
-      } else {
-        throw new SmsException(code + ":" + htmlResult);
-      }
+      result =
+          execute(API_SENT_HISTORY, new NameValuePair(PARAM_NAME_START_DATE, YMD_DATE_FORMAT
+              .format(start)), new NameValuePair(PARAM_NAME_END_DATE, YMD_DATE_FORMAT.format(end)));
+      return parseHistoryResult(result);
     } catch (Exception e) {
-      e.printStackTrace();
-      throw new SmsException(htmlResult == null ? e.getMessage() : htmlResult);
+      throw new SmsException(result == null ? e.getMessage() : result);
     }
   }
 
-  private List<SendResult> parseSendResult(InputStream input) {
+  /**
+   * 按天汇总短信发送结果
+   * 
+   * @param start 开始日期
+   * @param end 结束日期
+   * @return 指定日期内短信按天汇总条数
+   */
+  public List<DailyReport> getDailyReport(Date start, Date end) throws SmsException {
+    String result = null;
     try {
-      List<SendResult> result = new ArrayList<SendResult>();
-      DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-      DocumentBuilder builder = factory.newDocumentBuilder();
-      Document document = builder.parse(input);
-      Element element = document.getDocumentElement();
-
-      NodeList nodes = element.getElementsByTagName("dt");
-      for (int i = 0; i < nodes.getLength(); i++) {
-        String phone = null;
-        boolean success = false;
-        String descrption = null;
-        Element dtElement = (Element) nodes.item(i);
-        NodeList childNodes = dtElement.getChildNodes();
-        for (int j = 0; j < childNodes.getLength(); j++) {
-          if (childNodes.item(j).getNodeType() == Node.ELEMENT_NODE) {
-            String nodeName = childNodes.item(j).getNodeName();
-            Node firstChild = childNodes.item(j).getFirstChild();
-            if ("FPhone".equals(nodeName)) {
-              phone = firstChild.getNodeValue();
-            } else if ("FResult".equals(nodeName)) {
-              success = "发送成功".equals(firstChild.getNodeValue());
-            } else if ("FDescription".equals(nodeName)) {
-              if (firstChild != null) {
-                descrption = firstChild.getNodeValue();
-              }
-            }
-          }
-        }
-        result.add(new SendResult(phone, success, descrption));
-      }
-      return result;
+      result =
+          execute(API_DAILY_SENT, new NameValuePair(PARAM_NAME_START_DATE, YMD_DATE_FORMAT
+              .format(start)), new NameValuePair(PARAM_NAME_END_DATE, YMD_DATE_FORMAT.format(end)));
+      return parseDailyReportResult(result);
     } catch (Exception e) {
-      throw new SmsException(e.getMessage());
+      throw new SmsException(result == null ? e.getMessage() : result);
     }
   }
 
-  private List<SmsHistory> parseHistoryResult(InputStream input) throws Exception {
-    List<SmsHistory> result = new ArrayList<SmsHistory>();
-    NodeList nodes =
-        DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(input).getDocumentElement()
-            .getElementsByTagName("Table");
+  private String execute(String api, NameValuePair... params) throws HttpException, IOException {
+    int paramSize = params.length + 2;
+    NameValuePair[] parameters = new NameValuePair[paramSize];
+    parameters[0] = username;
+    parameters[1] = password;
+    for (int i = 2; i < paramSize; i++) {
+      parameters[1] = params[i - 2];
+    }
+    PostMethod post = new PostMethod(api);
+    post.setRequestBody(parameters);
+    int code = CLIENT.executeMethod(post);
+    String result = post.getResponseBodyAsString();
+    if (code != HttpStatus.SC_OK) {
+      throw new SmsException(code + result);
+    }
+    return result;
+  }
+
+  private List<SendResult> parseSendResult(String text) throws Exception {
+    List<SendResult> result = new ArrayList<SendResult>();
+    NodeList nodes = parse(text, "dt");
     for (int i = 0; i < nodes.getLength(); i++) {
-      String phone = null;
-      Date date = null;
-      String content = null;
-      boolean success = false;
-      Element dtElement = (Element) nodes.item(i);
-      NodeList childNodes = dtElement.getChildNodes();
+      SendResult smResult = new SendResult();
+      NodeList childNodes = ((Element) nodes.item(i)).getChildNodes();
       for (int j = 0; j < childNodes.getLength(); j++) {
         if (childNodes.item(j).getNodeType() == Node.ELEMENT_NODE) {
           String nodeName = childNodes.item(j).getNodeName();
+          String value = null;
           Node firstChild = childNodes.item(j).getFirstChild();
-          if ("Phone".equals(nodeName)) {
-            phone = firstChild.getNodeValue();
-          } else if ("SendDate".equals(nodeName)) {
-            date = DATE_FORMAT.parse(firstChild.getNodeValue().replaceAll(":(\\d{2})$", "$1"));
-          } else if ("Note".equals(nodeName)) {
-            content = firstChild.getNodeValue();
-          } else if ("result".equals(nodeName)) {
-            success = "成功".equals(firstChild.getNodeValue());
+          if (firstChild != null) {
+            value = firstChild.getNodeValue();
+          }
+          if ("FPhone".equalsIgnoreCase(nodeName)) {
+            smResult.setPhone(value);
+          } else if ("FResult".equalsIgnoreCase(nodeName)) {
+            smResult.setSuccess("发送成功".equals(value));
+          } else if ("FDescription".equalsIgnoreCase(nodeName)) {
+            smResult.setDescription(value);
           }
         }
       }
+      result.add(smResult);
+    }
+    return result;
+  }
+
+  private List<SmsHistory> parseHistoryResult(String text) throws Exception {
+    List<SmsHistory> result = new ArrayList<SmsHistory>();
+    NodeList nodes = parse(text, "Table");
+    for (int i = 0; i < nodes.getLength(); i++) {
       SmsHistory history = new SmsHistory();
-      history.setPhone(phone);
-      history.setDate(date);
-      history.setContent(content);
-      history.setSuccess(success);
+      NodeList childNodes = ((Element) nodes.item(i)).getChildNodes();
+      for (int j = 0; j < childNodes.getLength(); j++) {
+        if (childNodes.item(j).getNodeType() == Node.ELEMENT_NODE) {
+          String nodeName = childNodes.item(j).getNodeName();
+          String value = null;
+          Node firstChild = childNodes.item(j).getFirstChild();
+          if (firstChild != null) {
+            value = firstChild.getNodeValue();
+          }
+          if ("Phone".equalsIgnoreCase(nodeName)) {
+            history.setPhone(value);
+          } else if ("SendDate".equalsIgnoreCase(nodeName)) {
+            history.setDate(DATE_FORMAT.parse(value.replaceAll(":(\\d{2})$", "$1")));
+          } else if ("Note".equalsIgnoreCase(nodeName)) {
+            history.setContent(value);
+          } else if ("Result".equalsIgnoreCase(nodeName)) {
+            history.setSuccess("成功".equals(value));
+          }
+        }
+      }
       result.add(history);
     }
     return result;
   }
 
-  private List<DailyReport> parseDailyReportResult(InputStream input) throws Exception {
+  private List<DailyReport> parseDailyReportResult(String text) throws Exception {
     List<DailyReport> result = new ArrayList<DailyReport>();
-    NodeList nodes =
-        DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(input).getDocumentElement()
-            .getElementsByTagName("Table");
+    NodeList nodes = parse(text, "Table");
     for (int i = 0; i < nodes.getLength(); i++) {
-      Date date = null;
-      boolean success = false;
-      int count = 0;
-      Element dtElement = (Element) nodes.item(i);
-      NodeList childNodes = dtElement.getChildNodes();
+      DailyReport dailyReport = new DailyReport();
+      NodeList childNodes = ((Element) nodes.item(i)).getChildNodes();
       for (int j = 0; j < childNodes.getLength(); j++) {
         if (childNodes.item(j).getNodeType() == Node.ELEMENT_NODE) {
           String nodeName = childNodes.item(j).getNodeName();
+          String value = null;
           Node firstChild = childNodes.item(j).getFirstChild();
-          if ("Senddate".equals(nodeName)) {
-            date = YMD_DATE_FORMAT.parse(firstChild.getNodeValue());
-          } else if ("Result".equals(nodeName)) {
-            success = "成功".equals(firstChild.getNodeValue());
-          } else if ("TotalCount".equals(nodeName)) {
-            count = Integer.parseInt(firstChild.getNodeValue());
+          if (firstChild != null) {
+            value = firstChild.getNodeValue();
+          }
+          if ("SendDate".equalsIgnoreCase(nodeName)) {
+            dailyReport.setDate(YMD_DATE_FORMAT.parse(value));
+          } else if ("Result".equalsIgnoreCase(nodeName)) {
+            dailyReport.setSuccess("成功".equals(value));
+          } else if ("TotalCount".equalsIgnoreCase(nodeName)) {
+            dailyReport.setCount(Integer.parseInt(value));
           }
         }
       }
-      DailyReport dailyReport = new DailyReport();
-      dailyReport.setDate(date);
-      dailyReport.setSuccess(success);
-      dailyReport.setCount(count);
       result.add(dailyReport);
     }
     return result;
+  }
+
+  private NodeList parse(String text, String nodeName) throws SAXException, IOException,
+      ParserConfigurationException {
+    return DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(
+        new ByteArrayInputStream(text.getBytes())).getDocumentElement().getElementsByTagName(
+        nodeName);
   }
 
   public static Sms init() {

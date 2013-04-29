@@ -12,10 +12,7 @@ public class SendResult {
   private boolean success;
   private String description;
 
-  public SendResult(String phone, boolean success) {
-    this.phone = phone;
-    this.success = success;
-  }
+  public SendResult() {}
 
   public SendResult(String phone, boolean success, String description) {
     this.phone = phone;
