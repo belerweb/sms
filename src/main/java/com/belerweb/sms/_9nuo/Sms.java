@@ -1,8 +1,11 @@
 package com.belerweb.sms._9nuo;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 
@@ -32,10 +35,16 @@ public class Sms {
 
   private static final String API_BALANCE = "http://admin.9nuo.com/Interface_http/GetBalance.aspx";// 查询指定用户短信剩余额度
   private static final String API_SEND = "http://admin.9nuo.com/Interface_http/SendSms.aspx";// 指定用户发送短信
+  private static final String API_SENT_HISTORY =
+      "http://admin.9nuo.com/Interface_http/GetReportDetail.aspx";// 查询指定用户某日期范围内短信发送的明细清单
 
   private static final String CONFIG_KEY_USERNAME = "9nuo.username";
   private static final String CONFIG_KEY_PASSWORD = "9nuo.password";
   private static final String CONFIG_KEY_MD5_PASSWORD = "9nuo.password.md5";
+
+  private static final SimpleDateFormat DATE_FORMAT =
+      new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+  private static final SimpleDateFormat YMD_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
   public static final String PARAM_NAME_USERNAME = "userName";
   public static final String PARAM_NAME_PASSWORD = "pwd";
@@ -114,6 +123,27 @@ public class Sms {
     }
   }
 
+  public List<SmsHistory> getSentHistory(Date start, Date end) {
+    String htmlResult = null;
+    try {
+      NameValuePair phone = new NameValuePair("startDate", YMD_DATE_FORMAT.format(start));
+      NameValuePair note = new NameValuePair("endDate", YMD_DATE_FORMAT.format(end));
+      NameValuePair[] parameters = new NameValuePair[] {username, password, phone, note};
+      PostMethod post = new PostMethod(API_SENT_HISTORY);
+      post.setRequestBody(parameters);
+      int code = CLIENT.executeMethod(post);
+      if (code == HttpStatus.SC_OK) {
+        htmlResult = post.getResponseBodyAsString();
+        return parseHistoryResult(new ByteArrayInputStream(htmlResult.getBytes()));
+      } else {
+        throw new SmsException(code + ":" + htmlResult);
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+      throw new SmsException(htmlResult == null ? e.getMessage() : htmlResult);
+    }
+  }
+
   private List<SendResult> parseSendResult(InputStream input) {
     try {
       List<SendResult> result = new ArrayList<SendResult>();
@@ -150,6 +180,43 @@ public class Sms {
     } catch (Exception e) {
       throw new SmsException(e.getMessage());
     }
+  }
+
+  private List<SmsHistory> parseHistoryResult(InputStream input) throws Exception {
+    List<SmsHistory> result = new ArrayList<SmsHistory>();
+    NodeList nodes =
+        DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(input).getDocumentElement()
+            .getElementsByTagName("Table");
+    for (int i = 0; i < nodes.getLength(); i++) {
+      String phone = null;
+      Date date = null;
+      String content = null;
+      boolean success = false;
+      Element dtElement = (Element) nodes.item(i);
+      NodeList childNodes = dtElement.getChildNodes();
+      for (int j = 0; j < childNodes.getLength(); j++) {
+        if (childNodes.item(j).getNodeType() == Node.ELEMENT_NODE) {
+          String nodeName = childNodes.item(j).getNodeName();
+          Node firstChild = childNodes.item(j).getFirstChild();
+          if ("Phone".equals(nodeName)) {
+            phone = firstChild.getNodeValue();
+          } else if ("SendDate".equals(nodeName)) {
+            date = DATE_FORMAT.parse(firstChild.getNodeValue().replaceAll(":(\\d{2})$", "$1"));
+          } else if ("Note".equals(nodeName)) {
+            content = firstChild.getNodeValue();
+          } else if ("result".equals(nodeName)) {
+            success = "成功".equals(firstChild.getNodeValue());
+          }
+        }
+      }
+      SmsHistory history = new SmsHistory();
+      history.setPhone(phone);
+      history.setDate(date);
+      history.setContent(content);
+      history.setSuccess(success);
+      result.add(history);
+    }
+    return result;
   }
 
   public static Sms init() {
